@@ -1,0 +1,53 @@
+name: Generate AI News Newsletter
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_articles_per_source:
+        description: "Maximum articles to fetch per source"
+        required: false
+        default: "5"
+        type: string
+      openai_model:
+        description: "OpenAI model to use for summarization"
+        required: false
+        default: "gpt-4o-mini"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate-newsletter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate newsletter
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MAX_ARTICLES_PER_SOURCE: ${{ inputs.max_articles_per_source }}
+          OPENAI_MODEL: ${{ inputs.openai_model }}
+        run: python src/newsletter.py
+
+      - name: Commit newsletter
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add newsletters/
+          if git diff --cached --quiet; then
+            echo "No new newsletter to commit."
+          else
+            DATE=$(date -u +%Y-%m-%d)
+            git commit -m "newsletter: add AI news digest for ${DATE}"
+            git push
+          fi
