@@ -8,14 +8,15 @@ on:
         required: false
         default: "5"
         type: string
-      openai_model:
-        description: "OpenAI model to use for summarization"
+      github_model:
+        description: "GitHub Models model to use for summarization"
         required: false
         default: "gpt-4o-mini"
         type: string
 
 permissions:
   contents: write
+  models: read
 
 jobs:
   generate-newsletter:
@@ -34,9 +35,9 @@ jobs:
 
       - name: Generate newsletter
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAX_ARTICLES_PER_SOURCE: ${{ inputs.max_articles_per_source }}
-          OPENAI_MODEL: ${{ inputs.openai_model }}
+          GITHUB_MODEL: ${{ inputs.github_model }}
         run: python src/newsletter.py
 
       - name: Commit newsletter

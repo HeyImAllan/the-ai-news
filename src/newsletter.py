@@ -1,18 +1,19 @@
 """
 AI News Newsletter Generator
 
-Crawls a curated list of GitHub blogs and AI news pages, then uses OpenAI to
-analyze and summarize the articles into a Markdown newsletter.
+Crawls a curated list of GitHub blogs and AI news pages, then uses the
+GitHub Models inference API (no external subscription required) to analyze
+and summarize the articles into a Markdown newsletter.
 
 Usage:
     python src/newsletter.py
 
 Required environment variable:
-    OPENAI_API_KEY  - Your OpenAI API key
+    GITHUB_TOKEN             - GitHub token (automatically set in Actions)
 
 Optional environment variable:
     MAX_ARTICLES_PER_SOURCE  - Maximum articles to fetch per source (default: 5)
-    OPENAI_MODEL             - OpenAI model to use (default: gpt-4o-mini)
+    GITHUB_MODEL             - GitHub Models model to use (default: gpt-4o-mini)
 """
 
 import os
@@ -78,7 +79,7 @@ SOURCES = [
 # ---------------------------------------------------------------------------
 
 MAX_ARTICLES_PER_SOURCE = int(os.environ.get("MAX_ARTICLES_PER_SOURCE", "5"))
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gpt-4o-mini")
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
 REQUEST_TIMEOUT = 15  # seconds
@@ -195,15 +196,15 @@ def build_prompt(articles: list[dict]) -> str:
 
 
 def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
-    """Send articles to OpenAI and return the generated newsletter text."""
+    """Send articles to GitHub Models and return the generated newsletter text."""
     if not articles:
         raise ValueError("No articles to summarize.")
 
-    print(f"Generating newsletter with {OPENAI_MODEL}…")
+    print(f"Generating newsletter with {GITHUB_MODEL}…")
     prompt = build_prompt(articles)
 
     response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=GITHUB_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
     )
@@ -226,7 +227,7 @@ def wrap_newsletter(body: str, article_count: int) -> str:
         title: "AI & GitHub Agent News – {date_str}"
         date: {filename_date}
         articles_analyzed: {article_count}
-        model: {OPENAI_MODEL}
+        model: {GITHUB_MODEL}
         ---
 
         # 🤖 AI & GitHub Agent News – {date_str}
@@ -237,7 +238,7 @@ def wrap_newsletter(body: str, article_count: int) -> str:
 
         ---
         *Generated on {date_str} · {article_count} articles analyzed · \
-model: {OPENAI_MODEL}*
+model: {GITHUB_MODEL}*
     """)
 
     return header + body + footer
@@ -258,12 +259,16 @@ def save_newsletter(content: str) -> Path:
 
 
 def main() -> None:
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        print("ERROR: OPENAI_API_KEY environment variable is not set.", file=sys.stderr)
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        print("ERROR: GITHUB_TOKEN environment variable is not set.", file=sys.stderr)
         sys.exit(1)
 
-    client = OpenAI(api_key=api_key)
+    # GitHub Models is OpenAI-SDK-compatible; only the base_url differs.
+    client = OpenAI(
+        base_url="https://models.inference.ai.azure.com",
+        api_key=github_token,
+    )
 
     articles = fetch_all_articles()
     if not articles:
