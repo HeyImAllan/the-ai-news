@@ -13,7 +13,7 @@ Required environment variable:
 
 Optional environment variable:
     MAX_ARTICLES_PER_SOURCE  - Maximum articles to fetch per source (default: 5)
-    GITHUB_MODEL             - GitHub Models model to use (default: claude-sonnet-4-5)
+    GITHUB_MODEL             - GitHub Models model to use (default: gpt-4o)
 """
 
 import os
@@ -79,7 +79,7 @@ SOURCES = [
 # ---------------------------------------------------------------------------
 
 MAX_ARTICLES_PER_SOURCE = int(os.environ.get("MAX_ARTICLES_PER_SOURCE", "5"))
-GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "claude-sonnet-4-5")
+GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gpt-4o")
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
 REQUEST_TIMEOUT = 15  # seconds

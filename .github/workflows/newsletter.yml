@@ -11,7 +11,7 @@ on:
       github_model:
         description: "GitHub Models model to use for summarization"
         required: false
-        default: "claude-sonnet-4-5"
+        default: "gpt-4o"
         type: string
 
 permissions:
