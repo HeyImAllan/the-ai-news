@@ -11,7 +11,7 @@ on:
       github_model:
         description: "GitHub Models model to use for summarization"
         required: false
-        default: "gpt-4o-mini"
+        default: "gemini-3.1-pro"
         type: string
 
 permissions:

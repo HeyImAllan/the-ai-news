@@ -26,7 +26,7 @@ Actions → *Generate AI News Newsletter* → *Run workflow*.
 
 You can optionally override:
 - `max_articles_per_source` (default `5`)
-- `github_model` (default `gpt-4o-mini`)
+- `github_model` (default `gemini-3.1-pro`)
 
 ## Run locally
 

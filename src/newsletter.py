@@ -13,7 +13,7 @@ Required environment variable:
 
 Optional environment variable:
     MAX_ARTICLES_PER_SOURCE  - Maximum articles to fetch per source (default: 5)
-    GITHUB_MODEL             - GitHub Models model to use (default: gpt-4o-mini)
+    GITHUB_MODEL             - GitHub Models model to use (default: gemini-3.1-pro)
 """
 
 import os
@@ -79,7 +79,7 @@ SOURCES = [
 # ---------------------------------------------------------------------------
 
 MAX_ARTICLES_PER_SOURCE = int(os.environ.get("MAX_ARTICLES_PER_SOURCE", "5"))
-GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gpt-4o-mini")
+GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gemini-3.1-pro")
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
 REQUEST_TIMEOUT = 15  # seconds
@@ -216,7 +216,27 @@ def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
 # ---------------------------------------------------------------------------
 
 
-def wrap_newsletter(body: str, article_count: int) -> str:
+def build_recent_headlines_section(articles: list[dict]) -> str:
+    """Build a Markdown section listing recent headlines grouped by source."""
+    by_source: dict[str, list[dict]] = {}
+    for article in articles:
+        by_source.setdefault(article["source"], []).append(article)
+
+    lines = ["## 📰 Recent Headlines by Source", ""]
+    for source_name, source_articles in by_source.items():
+        lines.append(f"### {source_name}")
+        for article in source_articles:
+            title = article["title"] or "(no title)"
+            url = article["url"]
+            if url:
+                lines.append(f"- [{title}]({url})")
+            else:
+                lines.append(f"- {title}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def wrap_newsletter(body: str, article_count: int, articles: list[dict]) -> str:
     """Add a standard header/footer to the LLM-generated body."""
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%B %d, %Y")
@@ -241,7 +261,9 @@ def wrap_newsletter(body: str, article_count: int) -> str:
 model: {GITHUB_MODEL}*
     """)
 
-    return header + body + footer
+    recent_headlines = build_recent_headlines_section(articles)
+
+    return header + body + "\n\n" + recent_headlines + footer
 
 
 def save_newsletter(content: str) -> Path:
@@ -276,7 +298,7 @@ def main() -> None:
         sys.exit(1)
 
     newsletter_body = generate_newsletter(articles, client)
-    full_newsletter = wrap_newsletter(newsletter_body, len(articles))
+    full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles)
     output_path = save_newsletter(full_newsletter)
 
     print(f"\n✅ Newsletter saved to: {output_path}")
