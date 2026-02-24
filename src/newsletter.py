@@ -44,8 +44,7 @@ SOURCES = [
     },
     {
         "name": "GitHub Changelog – Actions",
-        # label/github-actions returns 404; use the broader actions label
-        "url": "https://github.blog/changelog/label/actions/feed/",
+        "url": "https://github.blog/tag/github-actions/feed/",
         "type": "rss",
     },
     {
