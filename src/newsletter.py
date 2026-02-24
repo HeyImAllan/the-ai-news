@@ -215,7 +215,6 @@ def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
     response = client.chat.completions.create(
         model=GITHUB_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
     )
     return response.choices[0].message.content.strip()
 
