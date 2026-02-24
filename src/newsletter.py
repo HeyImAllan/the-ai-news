@@ -54,7 +54,8 @@ SOURCES = [
     },
     {
         "name": "Anthropic News",
-        "url": "https://www.anthropic.com/rss.xml",
+        # /rss.xml returns 404; feedparser auto-discovers any RSS link from the HTML page
+        "url": "https://www.anthropic.com/news",
         "type": "rss",
     },
     {
