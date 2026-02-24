@@ -1,13 +1,10 @@
 name: Generate AI News Newsletter
 
 on:
+  schedule:
+    - cron: "0 8 * * *"   # runs daily at 08:00 UTC
   workflow_dispatch:
     inputs:
-      max_articles_per_source:
-        description: "Maximum articles to fetch per source"
-        required: false
-        default: "5"
-        type: string
       github_model:
         description: "GitHub Models model to use for summarization"
         required: false
@@ -36,7 +33,6 @@ jobs:
       - name: Generate newsletter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAX_ARTICLES_PER_SOURCE: ${{ inputs.max_articles_per_source }}
           GITHUB_MODEL: ${{ inputs.github_model }}
         run: python src/newsletter.py
 

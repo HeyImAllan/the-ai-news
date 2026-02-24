@@ -5,6 +5,9 @@ Crawls a curated list of GitHub blogs and AI news pages, then uses the
 GitHub Models inference API (no external subscription required) to analyze
 and summarize the articles into a Markdown newsletter.
 
+Only articles published within the last 24 hours are included to avoid
+duplicate topics across newsletter runs.
+
 Usage:
     python src/newsletter.py
 
@@ -12,14 +15,13 @@ Required environment variable:
     GITHUB_TOKEN             - GitHub token (automatically set in Actions)
 
 Optional environment variable:
-    MAX_ARTICLES_PER_SOURCE  - Maximum articles to fetch per source (default: 5)
     GITHUB_MODEL             - GitHub Models model to use (default: gpt-5)
 """
 
 import os
 import sys
 import textwrap
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import feedparser
@@ -79,8 +81,8 @@ SOURCES = [
 # Configuration
 # ---------------------------------------------------------------------------
 
-MAX_ARTICLES_PER_SOURCE = int(os.environ.get("MAX_ARTICLES_PER_SOURCE", "5"))
 GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gpt-5")
+LOOKBACK_HOURS = 24
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
 REQUEST_TIMEOUT = 15  # seconds
@@ -98,15 +100,28 @@ REQUEST_HEADERS = {
 
 
 def fetch_rss(source: dict) -> tuple[list[dict], str | None]:
-    """Parse an RSS/Atom feed and return (articles, error_message)."""
+    """Parse an RSS/Atom feed and return (articles, error_message).
+
+    Only articles published within the last LOOKBACK_HOURS hours are included.
+    """
     try:
         response = requests.get(
             source["url"], headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT
         )
         response.raise_for_status()
         feed = feedparser.parse(response.content)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
         articles = []
-        for entry in feed.entries[:MAX_ARTICLES_PER_SOURCE]:
+        undated_count = 0
+        for entry in feed.entries:
+            # Use published_parsed (UTC time.struct_time) when available
+            published_parsed = entry.get("published_parsed")
+            if published_parsed is not None:
+                published_dt = datetime(*published_parsed[:6], tzinfo=timezone.utc)
+                if published_dt < cutoff:
+                    continue
+            else:
+                undated_count += 1
             summary = entry.get("summary", "")
             # Strip HTML tags from summary
             if summary:
@@ -122,10 +137,11 @@ def fetch_rss(source: dict) -> tuple[list[dict], str | None]:
                     "published": entry.get("published", ""),
                 }
             )
-        print(
-            f"  ✓ {source['name']}: fetched {len(articles)} article(s)",
-            flush=True,
-        )
+        dated_count = len(articles) - undated_count
+        msg = f"  ✓ {source['name']}: fetched {len(articles)} article(s) from the last {LOOKBACK_HOURS}h"
+        if undated_count:
+            msg += f" ({dated_count} dated, {undated_count} undated)"
+        print(msg, flush=True)
         return articles, None
     except Exception as exc:  # noqa: BLE001
         error_msg = str(exc)
