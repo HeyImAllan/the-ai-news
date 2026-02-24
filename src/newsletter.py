@@ -13,7 +13,7 @@ Required environment variable:
 
 Optional environment variable:
     MAX_ARTICLES_PER_SOURCE  - Maximum articles to fetch per source (default: 5)
-    GITHUB_MODEL             - GitHub Models model to use (default: gemini-3.1-pro)
+    GITHUB_MODEL             - GitHub Models model to use (default: claude-sonnet-4-5)
 """
 
 import os
@@ -79,7 +79,7 @@ SOURCES = [
 # ---------------------------------------------------------------------------
 
 MAX_ARTICLES_PER_SOURCE = int(os.environ.get("MAX_ARTICLES_PER_SOURCE", "5"))
-GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gemini-3.1-pro")
+GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "claude-sonnet-4-5")
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
 REQUEST_TIMEOUT = 15  # seconds
@@ -96,8 +96,8 @@ REQUEST_HEADERS = {
 # ---------------------------------------------------------------------------
 
 
-def fetch_rss(source: dict) -> list[dict]:
-    """Parse an RSS/Atom feed and return a list of article dicts."""
+def fetch_rss(source: dict) -> tuple[list[dict], str | None]:
+    """Parse an RSS/Atom feed and return (articles, error_message)."""
     try:
         response = requests.get(
             source["url"], headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT
@@ -125,21 +125,29 @@ def fetch_rss(source: dict) -> list[dict]:
             f"  ✓ {source['name']}: fetched {len(articles)} article(s)",
             flush=True,
         )
-        return articles
+        return articles, None
     except Exception as exc:  # noqa: BLE001
-        print(f"  ✗ {source['name']}: {exc}", flush=True)
-        return []
+        error_msg = str(exc)
+        print(f"  ✗ {source['name']}: {error_msg}", flush=True)
+        return [], error_msg
 
 
-def fetch_all_articles() -> list[dict]:
-    """Fetch articles from all configured sources."""
+def fetch_all_articles() -> tuple[list[dict], dict[str, str]]:
+    """Fetch articles from all configured sources.
+
+    Returns a tuple of (articles, failed_sources) where failed_sources maps
+    source name to error message.
+    """
     all_articles: list[dict] = []
+    failed_sources: dict[str, str] = {}
     print("Fetching articles…")
     for source in SOURCES:
-        articles = fetch_rss(source)
+        articles, error = fetch_rss(source)
         all_articles.extend(articles)
+        if error is not None:
+            failed_sources[source["name"]] = error
     print(f"Total articles fetched: {len(all_articles)}\n")
-    return all_articles
+    return all_articles, failed_sources
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +224,9 @@ def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_recent_headlines_section(articles: list[dict]) -> str:
+def build_recent_headlines_section(
+    articles: list[dict], failed_sources: dict[str, str]
+) -> str:
     """Build a Markdown section listing recent headlines grouped by source."""
     by_source: dict[str, list[dict]] = {}
     for article in articles:
@@ -233,10 +243,19 @@ def build_recent_headlines_section(articles: list[dict]) -> str:
             else:
                 lines.append(f"- {title}")
         lines.append("")
+
+    if failed_sources:
+        lines.append("### ⚠️ Sources That Could Not Be Retrieved")
+        for source_name, error_msg in failed_sources.items():
+            lines.append(f"- **{source_name}**: {error_msg}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
-def wrap_newsletter(body: str, article_count: int, articles: list[dict]) -> str:
+def wrap_newsletter(
+    body: str, article_count: int, articles: list[dict], failed_sources: dict[str, str]
+) -> str:
     """Add a standard header/footer to the LLM-generated body."""
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%B %d, %Y")
@@ -261,7 +280,7 @@ def wrap_newsletter(body: str, article_count: int, articles: list[dict]) -> str:
 model: {GITHUB_MODEL}*
     """)
 
-    recent_headlines = build_recent_headlines_section(articles)
+    recent_headlines = build_recent_headlines_section(articles, failed_sources)
 
     return header + body + "\n\n" + recent_headlines + footer
 
@@ -292,13 +311,13 @@ def main() -> None:
         api_key=github_token,
     )
 
-    articles = fetch_all_articles()
+    articles, failed_sources = fetch_all_articles()
     if not articles:
         print("ERROR: No articles fetched from any source.", file=sys.stderr)
         sys.exit(1)
 
     newsletter_body = generate_newsletter(articles, client)
-    full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles)
+    full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles, failed_sources)
     output_path = save_newsletter(full_newsletter)
 
     print(f"\n✅ Newsletter saved to: {output_path}")
