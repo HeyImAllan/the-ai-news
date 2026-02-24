@@ -165,10 +165,10 @@ def build_prompt(articles: list[dict]) -> str:
             f"    Title: {article['title']}",
             f"    URL: {article['url']}",
         ]
-        if article["summary"]:
-            lines.append(f"    Summary: {article['summary']}")
-        if article["published"]:
-            lines.append(f"    Published: {article['published']}")
+        # Truncate summary to 100 chars in the prompt to stay within model token limits
+        summary = article["summary"]
+        if summary:
+            lines.append(f"    Summary: {summary[:100]}")
         article_lines.append("\n".join(lines))
 
     articles_block = "\n\n".join(article_lines)
