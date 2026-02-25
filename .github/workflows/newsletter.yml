@@ -33,7 +33,7 @@ jobs:
       - name: Generate newsletter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ inputs.github_model }}
+          GITHUB_MODEL: ${{ inputs.github_model || 'gpt-5' }}
         run: python src/newsletter.py
 
       - name: Commit newsletter

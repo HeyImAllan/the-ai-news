@@ -81,7 +81,7 @@ SOURCES = [
 # Configuration
 # ---------------------------------------------------------------------------
 
-GITHUB_MODEL = os.environ.get("GITHUB_MODEL", "gpt-5")
+GITHUB_MODEL = os.environ.get("GITHUB_MODEL") or "gpt-5"
 LOOKBACK_HOURS = 24
 NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
 
