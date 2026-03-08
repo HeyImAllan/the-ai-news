@@ -53,7 +53,7 @@ class MainTests(unittest.TestCase):
 
         mock_openai.assert_called_once()
         mock_generate_newsletter.assert_called_once_with(articles, mock_openai.return_value)
-        mock_wrap_newsletter.assert_called_once_with("body", 1, articles, {})
+        mock_wrap_newsletter.assert_called_once_with("body", len(articles), articles, {})
         mock_save_newsletter.assert_called_once_with("wrapped")
 
     def test_main_exits_when_github_token_missing(self):
