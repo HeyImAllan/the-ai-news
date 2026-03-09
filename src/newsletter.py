@@ -329,8 +329,8 @@ def main() -> None:
 
     articles, failed_sources = fetch_all_articles()
     if not articles:
-        print("ERROR: No articles fetched from any source.", file=sys.stderr)
-        sys.exit(1)
+        print("No articles fetched from any source. Skipping newsletter generation.")
+        sys.exit(0)
 
     newsletter_body = generate_newsletter(articles, client)
     full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles, failed_sources)
