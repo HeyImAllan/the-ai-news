@@ -37,7 +37,7 @@ class MainTests(unittest.TestCase):
         mock_wrap_newsletter.assert_not_called()
         mock_save_newsletter.assert_not_called()
         mock_save_today_markdown.assert_not_called()
-        mock_compact_previous_month_news.assert_not_called()
+        mock_compact_previous_month_news.assert_called_once()
 
     @patch("src.newsletter.compact_previous_month_news")
     @patch("src.newsletter.save_today_markdown")
@@ -80,6 +80,21 @@ class MainTests(unittest.TestCase):
 
 
 class OutputHelpersTests(unittest.TestCase):
+    def test_normalize_newsletter_body_enforces_required_sections(self):
+        normalized = newsletter.normalize_newsletter_body(
+            """# Temporary title
+
+## Today’s Highlights
+Summary paragraph.
+"""
+        )
+
+        self.assertNotIn("# Temporary title", normalized)
+        self.assertIn("## ✨ Today's Highlights", normalized)
+        self.assertIn("## 🚀 What Changed Today", normalized)
+        self.assertIn("## 📚 Deep Dive by Theme", normalized)
+        self.assertIn("## ✅ Key Takeaways", normalized)
+
     def test_build_prompt_includes_consistent_modern_template_sections(self):
         prompt = newsletter.build_prompt(
             [{"source": "A", "title": "T", "url": "U", "summary": "S", "published": ""}]

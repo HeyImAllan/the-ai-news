@@ -19,6 +19,7 @@ Optional environment variable:
 """
 
 import os
+import re
 import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
@@ -86,6 +87,27 @@ LOOKBACK_HOURS = 24
 REPO_ROOT = Path(__file__).parent.parent
 NEWSLETTERS_DIR = REPO_ROOT / "newsletters"
 TODAY_FILE = REPO_ROOT / "TODAY.MD"
+ENGLISH_MONTH_NAMES = {
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December",
+}
+
+REQUIRED_H2_SECTIONS = (
+    "✨ Today's Highlights",
+    "🚀 What Changed Today",
+    "📚 Deep Dive by Theme",
+    "✅ Key Takeaways",
+)
 
 REQUEST_TIMEOUT = 15  # seconds
 REQUEST_HEADERS = {
@@ -241,7 +263,7 @@ def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
         model=GITHUB_MODEL,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content.strip()
+    return normalize_newsletter_body(response.choices[0].message.content.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +347,54 @@ def save_today_markdown(content: str, today_file: Path = TODAY_FILE) -> Path:
     return today_file
 
 
+def normalize_newsletter_body(body: str) -> str:
+    """Normalize model output so required H2 sections are always present."""
+    heading_aliases = {
+        "todays highlights": "✨ Today's Highlights",
+        "what changed today": "🚀 What Changed Today",
+        "deep dive by theme": "📚 Deep Dive by Theme",
+        "key takeaways": "✅ Key Takeaways",
+    }
+    default_section_content = {
+        "✨ Today's Highlights": "No major highlights were identified today.",
+        "🚀 What Changed Today": "- No major updates were identified in today's sources.",
+        "📚 Deep Dive by Theme": "### Other\n- No additional thematic analysis was generated.",
+        "✅ Key Takeaways": "- No additional takeaways were generated.",
+    }
+
+    normalized_lines: list[str] = []
+    seen_required_sections: set[str] = set()
+    for line in body.splitlines():
+        if line.startswith("# "):
+            continue
+        if line.startswith("## "):
+            heading_text = line[3:].strip()
+            # Normalize heading aliases by stripping emojis/punctuation and
+            # collapsing whitespace to preserve word boundaries.
+            # The regex keeps only lowercase letters, digits, and spaces.
+            normalized_heading_key = " ".join(
+                re.sub(r"[^a-z0-9 ]+", " ", heading_text.lower()).split()
+            )
+            canonical_heading = heading_aliases.get(normalized_heading_key)
+            if canonical_heading:
+                normalized_lines.append(f"## {canonical_heading}")
+                seen_required_sections.add(canonical_heading)
+                continue
+        normalized_lines.append(line)
+
+    normalized_body = "\n".join(normalized_lines).strip()
+    missing_sections = [
+        heading for heading in REQUIRED_H2_SECTIONS if heading not in seen_required_sections
+    ]
+    if missing_sections:
+        additions: list[str] = []
+        for heading in missing_sections:
+            additions.extend(["", f"## {heading}", default_section_content[heading]])
+        normalized_body = normalized_body + "\n" + "\n".join(additions)
+
+    return normalized_body.strip()
+
+
 def compact_previous_month_news(
     now: datetime | None = None, newsletters_dir: Path = NEWSLETTERS_DIR
 ) -> Path | None:
@@ -343,10 +413,12 @@ def compact_previous_month_news(
     if not daily_files:
         return None
 
+    previous_month_name = ENGLISH_MONTH_NAMES[previous_month_last_day.month]
+    current_month_name = ENGLISH_MONTH_NAMES[current.month]
     lines = [
-        f"# 📅 {previous_month_last_day.strftime('%B %Y')} Overview",
+        f"# 📅 {previous_month_name} {previous_month_last_day.year} Overview",
         "",
-        f"Daily newsletters in {previous_month_last_day.strftime('%B %Y')}:",
+        f"Daily newsletters in {previous_month_name} {previous_month_last_day.year}:",
         "",
     ]
     for daily_file in daily_files:
@@ -356,7 +428,8 @@ def compact_previous_month_news(
     lines.append("---")
     lines.append(
         f"*Compiled monthly overview generated on "
-        f"{current.strftime('%B %d, %Y')} from {len(daily_files)} daily newsletters.*"
+        f"{current_month_name} {current.day}, {current.year} from "
+        f"{len(daily_files)} daily newsletters.*"
     )
     lines.append("")
 
@@ -381,8 +454,11 @@ def main() -> None:
         api_key=github_token,
     )
 
+    monthly_overview_path = compact_previous_month_news()
     articles, failed_sources = fetch_all_articles()
     if not articles:
+        if monthly_overview_path:
+            print(f"✅ Monthly overview saved to: {monthly_overview_path}")
         print("No articles fetched from any source. Skipping newsletter generation.")
         sys.exit(0)
 
@@ -390,7 +466,6 @@ def main() -> None:
     full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles, failed_sources)
     output_path = save_newsletter(full_newsletter)
     today_path = save_today_markdown(full_newsletter)
-    monthly_overview_path = compact_previous_month_news()
 
     print(f"\n✅ Newsletter saved to: {output_path}")
     print(f"✅ Today file saved to: {today_path}")
