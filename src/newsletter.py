@@ -83,7 +83,9 @@ SOURCES = [
 
 GITHUB_MODEL = os.environ.get("GITHUB_MODEL") or "gpt-5"
 LOOKBACK_HOURS = 24
-NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
+REPO_ROOT = Path(__file__).parent.parent
+NEWSLETTERS_DIR = REPO_ROOT / "newsletters"
+TODAY_FILE = REPO_ROOT / "TODAY.MD"
 
 REQUEST_TIMEOUT = 15  # seconds
 REQUEST_HEADERS = {
@@ -200,15 +202,21 @@ def build_prompt(articles: list[dict]) -> str:
         Your task is to write a concise, well-structured daily newsletter in
         Markdown format that:
 
-        1. Starts with a short "Today's Highlights" paragraph (2-4 sentences)
-           summarizing the most important themes.
-        2. Groups articles into thematic sections (e.g. "GitHub & Copilot",
-           "Foundation Models", "AI Agents & Tooling", "Research", "Other").
-        3. For each article, writes a 1-3 sentence analysis explaining *why*
-           it matters for AI agent developers and what to watch.
-        4. Ends with a "Key Takeaways" bullet list (3-5 bullets).
+        Use this exact section structure for a consistent modern look:
+        1. ## ✨ Today's Highlights
+           - one short paragraph (2-4 sentences) covering the top themes.
+        2. ## 🚀 What Changed Today
+           - 3-6 concise bullet points describing meaningful updates.
+        3. ## 📚 Deep Dive by Theme
+           - Use H3 subsections for themes (for example: "GitHub & Copilot",
+             "Foundation Models", "AI Agents & Tooling", "Research", "Other").
+           - For each article, add a bullet with a markdown link, followed by
+             a 1-3 sentence analysis of why it matters and what to watch next.
+        4. ## ✅ Key Takeaways
+           - 3-5 concise bullets.
 
         Use proper Markdown: headings, bullet points, and hyperlinks.
+        Keep tone professional, modern, and skimmable.
         Do NOT invent facts – only use information from the articles provided.
         If an article is not relevant to AI or developer tooling, skip it.
 
@@ -310,6 +318,51 @@ def save_newsletter(content: str) -> Path:
     return output_path
 
 
+def save_today_markdown(content: str, today_file: Path = TODAY_FILE) -> Path:
+    """Write today's generated newsletter to TODAY.MD in the repository root."""
+    today_file.write_text(content, encoding="utf-8")
+    return today_file
+
+
+def compact_previous_month_news(
+    now: datetime | None = None, newsletters_dir: Path = NEWSLETTERS_DIR
+) -> Path | None:
+    """Create a monthly overview file on the first day of each month."""
+    current = now or datetime.now(timezone.utc)
+    if current.day != 1:
+        return None
+
+    previous_month_last_day = current.replace(day=1) - timedelta(days=1)
+    month_prefix = previous_month_last_day.strftime("%Y-%m")
+    overview_path = newsletters_dir / f"{month_prefix}.md"
+    if overview_path.exists():
+        return None
+
+    daily_files = sorted(newsletters_dir.glob(f"{month_prefix}-*.md"))
+    if not daily_files:
+        return None
+
+    lines = [
+        f"# 📅 {previous_month_last_day.strftime('%B %Y')} Overview",
+        "",
+        f"Daily newsletters in {previous_month_last_day.strftime('%B %Y')}:",
+        "",
+    ]
+    for daily_file in daily_files:
+        day = daily_file.stem
+        lines.append(f"- [{day}]({daily_file.name})")
+    lines.append("")
+    lines.append("---")
+    lines.append(
+        f"*Compacted monthly overview generated on "
+        f"{current.strftime('%B %d, %Y')} from {len(daily_files)} daily newsletters.*"
+    )
+    lines.append("")
+
+    overview_path.write_text("\n".join(lines), encoding="utf-8")
+    return overview_path
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -335,8 +388,13 @@ def main() -> None:
     newsletter_body = generate_newsletter(articles, client)
     full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles, failed_sources)
     output_path = save_newsletter(full_newsletter)
+    today_path = save_today_markdown(full_newsletter)
+    monthly_overview_path = compact_previous_month_news()
 
     print(f"\n✅ Newsletter saved to: {output_path}")
+    print(f"✅ Today file saved to: {today_path}")
+    if monthly_overview_path:
+        print(f"✅ Monthly overview saved to: {monthly_overview_path}")
     print(f"   Articles analyzed:  {len(articles)}")
 
 

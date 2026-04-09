@@ -14,7 +14,9 @@ into a Markdown newsletter — no external subscriptions required.
    `GITHUB_TOKEN` that is automatically provided by every Actions run.
 3. The model produces a structured Markdown newsletter grouped by theme.
 4. The newsletter is committed to the `newsletters/` directory as
-   `YYYY-MM-DD.md`.
+   `YYYY-MM-DD.md`, and mirrored to `TODAY.MD` at the repo root.
+5. On the first day of each month, a compact monthly overview file
+   `newsletters/YYYY-MM.md` is generated for the previous month.
 
 ## Setup
 
@@ -36,7 +38,7 @@ export GITHUB_TOKEN=ghp_...   # a classic PAT or fine-grained PAT; no extra scop
 python src/newsletter.py
 ```
 
-The newsletter is written to `newsletters/YYYY-MM-DD.md`.
+The newsletter is written to `newsletters/YYYY-MM-DD.md` and `TODAY.MD`.
 
 ## Scheduling (future)
 

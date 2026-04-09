@@ -1,10 +1,15 @@
 import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from src import newsletter
 
 
 class MainTests(unittest.TestCase):
+    @patch("src.newsletter.compact_previous_month_news")
+    @patch("src.newsletter.save_today_markdown")
     @patch("src.newsletter.save_newsletter")
     @patch("src.newsletter.wrap_newsletter")
     @patch("src.newsletter.generate_newsletter")
@@ -17,6 +22,8 @@ class MainTests(unittest.TestCase):
         mock_generate_newsletter,
         mock_wrap_newsletter,
         mock_save_newsletter,
+        mock_save_today_markdown,
+        mock_compact_previous_month_news,
     ):
         mock_fetch_all_articles.return_value = ([], {})
 
@@ -29,7 +36,11 @@ class MainTests(unittest.TestCase):
         mock_generate_newsletter.assert_not_called()
         mock_wrap_newsletter.assert_not_called()
         mock_save_newsletter.assert_not_called()
+        mock_save_today_markdown.assert_not_called()
+        mock_compact_previous_month_news.assert_not_called()
 
+    @patch("src.newsletter.compact_previous_month_news")
+    @patch("src.newsletter.save_today_markdown")
     @patch("src.newsletter.save_newsletter")
     @patch("src.newsletter.wrap_newsletter")
     @patch("src.newsletter.generate_newsletter")
@@ -42,6 +53,8 @@ class MainTests(unittest.TestCase):
         mock_generate_newsletter,
         mock_wrap_newsletter,
         mock_save_newsletter,
+        mock_save_today_markdown,
+        mock_compact_previous_month_news,
     ):
         articles = [{"source": "A", "title": "T", "url": "U", "summary": "S", "published": ""}]
         mock_fetch_all_articles.return_value = (articles, {})
@@ -55,6 +68,8 @@ class MainTests(unittest.TestCase):
         mock_generate_newsletter.assert_called_once_with(articles, mock_openai.return_value)
         mock_wrap_newsletter.assert_called_once_with("body", len(articles), articles, {})
         mock_save_newsletter.assert_called_once_with("wrapped")
+        mock_save_today_markdown.assert_called_once_with("wrapped")
+        mock_compact_previous_month_news.assert_called_once()
 
     def test_main_exits_when_github_token_missing(self):
         with patch.dict("os.environ", {}, clear=True):
@@ -62,6 +77,57 @@ class MainTests(unittest.TestCase):
                 newsletter.main()
 
         self.assertEqual(context.exception.code, 1)
+
+
+class OutputHelpersTests(unittest.TestCase):
+    def test_build_prompt_includes_consistent_modern_template_sections(self):
+        prompt = newsletter.build_prompt(
+            [{"source": "A", "title": "T", "url": "U", "summary": "S", "published": ""}]
+        )
+
+        self.assertIn("## ✨ Today's Highlights", prompt)
+        self.assertIn("## 🚀 What Changed Today", prompt)
+        self.assertIn("## 📚 Deep Dive by Theme", prompt)
+        self.assertIn("## ✅ Key Takeaways", prompt)
+
+    def test_save_today_markdown_writes_to_expected_path(self):
+        with TemporaryDirectory() as tmp_dir:
+            today_path = Path(tmp_dir) / "TODAY.MD"
+            result = newsletter.save_today_markdown("sample", today_file=today_path)
+
+            self.assertEqual(result, today_path)
+            self.assertEqual(today_path.read_text(encoding="utf-8"), "sample")
+
+    def test_compact_previous_month_news_creates_overview_on_first_day(self):
+        with TemporaryDirectory() as tmp_dir:
+            newsletters_dir = Path(tmp_dir)
+            (newsletters_dir / "2026-03-01.md").write_text("a", encoding="utf-8")
+            (newsletters_dir / "2026-03-15.md").write_text("b", encoding="utf-8")
+            (newsletters_dir / "2026-03-31.md").write_text("c", encoding="utf-8")
+
+            result = newsletter.compact_previous_month_news(
+                now=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                newsletters_dir=newsletters_dir,
+            )
+
+            self.assertEqual(result, newsletters_dir / "2026-03.md")
+            self.assertTrue(result.exists())
+            content = result.read_text(encoding="utf-8")
+            self.assertIn("# 📅 March 2026 Overview", content)
+            self.assertIn("- [2026-03-01](2026-03-01.md)", content)
+
+    def test_compact_previous_month_news_skips_when_not_first_day(self):
+        with TemporaryDirectory() as tmp_dir:
+            newsletters_dir = Path(tmp_dir)
+            (newsletters_dir / "2026-03-01.md").write_text("a", encoding="utf-8")
+
+            result = newsletter.compact_previous_month_news(
+                now=datetime(2026, 4, 2, tzinfo=timezone.utc),
+                newsletters_dir=newsletters_dir,
+            )
+
+            self.assertIsNone(result)
+            self.assertFalse((newsletters_dir / "2026-03.md").exists())
 
 
 if __name__ == "__main__":
