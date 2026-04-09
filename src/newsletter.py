@@ -19,6 +19,7 @@ Optional environment variable:
 """
 
 import os
+import re
 import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
@@ -83,7 +84,30 @@ SOURCES = [
 
 GITHUB_MODEL = os.environ.get("GITHUB_MODEL") or "gpt-5"
 LOOKBACK_HOURS = 24
-NEWSLETTERS_DIR = Path(__file__).parent.parent / "newsletters"
+REPO_ROOT = Path(__file__).parent.parent
+NEWSLETTERS_DIR = REPO_ROOT / "newsletters"
+TODAY_FILE = REPO_ROOT / "TODAY.MD"
+ENGLISH_MONTH_NAMES = {
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December",
+}
+
+REQUIRED_H2_SECTIONS = (
+    "✨ Today's Highlights",
+    "🚀 What Changed Today",
+    "📚 Deep Dive by Theme",
+    "✅ Key Takeaways",
+)
 
 REQUEST_TIMEOUT = 15  # seconds
 REQUEST_HEADERS = {
@@ -200,15 +224,22 @@ def build_prompt(articles: list[dict]) -> str:
         Your task is to write a concise, well-structured daily newsletter in
         Markdown format that:
 
-        1. Starts with a short "Today's Highlights" paragraph (2-4 sentences)
-           summarizing the most important themes.
-        2. Groups articles into thematic sections (e.g. "GitHub & Copilot",
-           "Foundation Models", "AI Agents & Tooling", "Research", "Other").
-        3. For each article, writes a 1-3 sentence analysis explaining *why*
-           it matters for AI agent developers and what to watch.
-        4. Ends with a "Key Takeaways" bullet list (3-5 bullets).
+        Use this exact section structure for a consistent modern look:
+        1. ## ✨ Today's Highlights
+           - one short paragraph (2-4 sentences) covering the top themes.
+        2. ## 🚀 What Changed Today
+           - 3-6 concise bullet points describing meaningful updates.
+        3. ## 📚 Deep Dive by Theme
+           - Use H3 subsections for themes (for example: "GitHub & Copilot",
+             "Foundation Models", "AI Agents & Tooling", "Research", "Other").
+           - For each article, add a bullet with a markdown link, followed by
+             a 1-3 sentence analysis of why it matters and what to watch next.
+        4. ## ✅ Key Takeaways
+           - 3-5 concise bullets.
 
         Use proper Markdown: headings, bullet points, and hyperlinks.
+        Keep tone professional, modern, and skimmable.
+        Do not add a top-level H1 title because the wrapper already provides it.
         Do NOT invent facts – only use information from the articles provided.
         If an article is not relevant to AI or developer tooling, skip it.
 
@@ -232,7 +263,7 @@ def generate_newsletter(articles: list[dict], client: OpenAI) -> str:
         model=GITHUB_MODEL,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content.strip()
+    return normalize_newsletter_body(response.choices[0].message.content.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +341,102 @@ def save_newsletter(content: str) -> Path:
     return output_path
 
 
+def save_today_markdown(content: str, today_file: Path = TODAY_FILE) -> Path:
+    """Write today's generated newsletter to TODAY.MD in the repository root."""
+    today_file.write_text(content, encoding="utf-8")
+    return today_file
+
+
+def normalize_newsletter_body(body: str) -> str:
+    """Normalize model output so required H2 sections are always present."""
+    heading_aliases = {
+        "todays highlights": "✨ Today's Highlights",
+        "what changed today": "🚀 What Changed Today",
+        "deep dive by theme": "📚 Deep Dive by Theme",
+        "key takeaways": "✅ Key Takeaways",
+    }
+    default_section_content = {
+        "✨ Today's Highlights": "No major highlights were identified today.",
+        "🚀 What Changed Today": "- No major updates were identified in today's sources.",
+        "📚 Deep Dive by Theme": "### Other\n- No additional thematic analysis was generated.",
+        "✅ Key Takeaways": "- No additional takeaways were generated.",
+    }
+
+    normalized_lines: list[str] = []
+    seen_required_sections: set[str] = set()
+    for line in body.splitlines():
+        if line.startswith("# "):
+            continue
+        if line.startswith("## "):
+            heading_text = line[3:].strip()
+            # Normalize heading aliases by stripping emojis/punctuation and
+            # collapsing whitespace to preserve word boundaries.
+            # The regex keeps only lowercase letters, digits, and spaces.
+            normalized_heading_key = " ".join(
+                re.sub(r"[^a-z0-9 ]+", " ", heading_text.lower()).split()
+            )
+            canonical_heading = heading_aliases.get(normalized_heading_key)
+            if canonical_heading:
+                normalized_lines.append(f"## {canonical_heading}")
+                seen_required_sections.add(canonical_heading)
+                continue
+        normalized_lines.append(line)
+
+    normalized_body = "\n".join(normalized_lines).strip()
+    missing_sections = [
+        heading for heading in REQUIRED_H2_SECTIONS if heading not in seen_required_sections
+    ]
+    if missing_sections:
+        additions: list[str] = []
+        for heading in missing_sections:
+            additions.extend(["", f"## {heading}", default_section_content[heading]])
+        normalized_body = normalized_body + "\n" + "\n".join(additions)
+
+    return normalized_body.strip()
+
+
+def compact_previous_month_news(
+    now: datetime | None = None, newsletters_dir: Path = NEWSLETTERS_DIR
+) -> Path | None:
+    """Create a monthly overview file on the first day of each month."""
+    current = now or datetime.now(timezone.utc)
+    if current.day != 1:
+        return None
+
+    previous_month_last_day = current.replace(day=1) - timedelta(days=1)
+    month_prefix = previous_month_last_day.strftime("%Y-%m")
+    overview_path = newsletters_dir / f"{month_prefix}.md"
+    if overview_path.exists():
+        return None
+
+    daily_files = sorted(newsletters_dir.glob(f"{month_prefix}-*.md"))
+    if not daily_files:
+        return None
+
+    previous_month_name = ENGLISH_MONTH_NAMES[previous_month_last_day.month]
+    current_month_name = ENGLISH_MONTH_NAMES[current.month]
+    lines = [
+        f"# 📅 {previous_month_name} {previous_month_last_day.year} Overview",
+        "",
+        f"Daily newsletters in {previous_month_name} {previous_month_last_day.year}:",
+        "",
+    ]
+    for daily_file in daily_files:
+        day = daily_file.stem
+        lines.append(f"- [{day}]({daily_file.name})")
+    lines.append("")
+    lines.append("---")
+    lines.append(
+        f"*Compiled monthly overview generated on "
+        f"{current_month_name} {current.day}, {current.year} from "
+        f"{len(daily_files)} daily newsletters.*"
+    )
+    lines.append("")
+
+    overview_path.write_text("\n".join(lines), encoding="utf-8")
+    return overview_path
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -327,16 +454,23 @@ def main() -> None:
         api_key=github_token,
     )
 
+    monthly_overview_path = compact_previous_month_news()
     articles, failed_sources = fetch_all_articles()
     if not articles:
+        if monthly_overview_path:
+            print(f"✅ Monthly overview saved to: {monthly_overview_path}")
         print("No articles fetched from any source. Skipping newsletter generation.")
         sys.exit(0)
 
     newsletter_body = generate_newsletter(articles, client)
     full_newsletter = wrap_newsletter(newsletter_body, len(articles), articles, failed_sources)
     output_path = save_newsletter(full_newsletter)
+    today_path = save_today_markdown(full_newsletter)
 
     print(f"\n✅ Newsletter saved to: {output_path}")
+    print(f"✅ Today file saved to: {today_path}")
+    if monthly_overview_path:
+        print(f"✅ Monthly overview saved to: {monthly_overview_path}")
     print(f"   Articles analyzed:  {len(articles)}")
 
 
