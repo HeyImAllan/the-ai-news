@@ -217,6 +217,7 @@ def build_prompt(articles: list[dict]) -> str:
 
         Use proper Markdown: headings, bullet points, and hyperlinks.
         Keep tone professional, modern, and skimmable.
+        Do not add a top-level H1 title because the wrapper already provides it.
         Do NOT invent facts – only use information from the articles provided.
         If an article is not relevant to AI or developer tooling, skip it.
 
@@ -354,7 +355,7 @@ def compact_previous_month_news(
     lines.append("")
     lines.append("---")
     lines.append(
-        f"*Compacted monthly overview generated on "
+        f"*Compiled monthly overview generated on "
         f"{current.strftime('%B %d, %Y')} from {len(daily_files)} daily newsletters.*"
     )
     lines.append("")

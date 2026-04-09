@@ -89,6 +89,7 @@ class OutputHelpersTests(unittest.TestCase):
         self.assertIn("## 🚀 What Changed Today", prompt)
         self.assertIn("## 📚 Deep Dive by Theme", prompt)
         self.assertIn("## ✅ Key Takeaways", prompt)
+        self.assertIn("Do not add a top-level H1 title", prompt)
 
     def test_save_today_markdown_writes_to_expected_path(self):
         with TemporaryDirectory() as tmp_dir:
