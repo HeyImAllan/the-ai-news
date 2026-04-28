@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run functional tests
+        run: python -m unittest -q tests/test_newsletter.py
+
       - name: Generate newsletter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

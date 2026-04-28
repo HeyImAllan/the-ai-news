@@ -117,9 +117,15 @@ Summary paragraph.
     def test_compact_previous_month_news_creates_overview_on_first_day(self):
         with TemporaryDirectory() as tmp_dir:
             newsletters_dir = Path(tmp_dir)
-            (newsletters_dir / "2026-03-01.md").write_text("a", encoding="utf-8")
-            (newsletters_dir / "2026-03-15.md").write_text("b", encoding="utf-8")
-            (newsletters_dir / "2026-03-31.md").write_text("c", encoding="utf-8")
+            (newsletters_dir / "2026-03-01.md").write_text(
+                "day one: launch news", encoding="utf-8"
+            )
+            (newsletters_dir / "2026-03-15.md").write_text(
+                "day fifteen: model updates", encoding="utf-8"
+            )
+            (newsletters_dir / "2026-03-31.md").write_text(
+                "day thirty-one: security release", encoding="utf-8"
+            )
 
             result = newsletter.compact_previous_month_news(
                 now=datetime(2026, 4, 1, tzinfo=timezone.utc),
@@ -129,8 +135,13 @@ Summary paragraph.
             self.assertEqual(result, newsletters_dir / "2026-03.md")
             self.assertTrue(result.exists())
             content = result.read_text(encoding="utf-8")
-            self.assertIn("# 📅 March 2026 Overview", content)
-            self.assertIn("- [2026-03-01](2026-03-01.md)", content)
+            self.assertIn("# 📅 March 2026 News Overview", content)
+            self.assertIn("## 2026-03-01", content)
+            self.assertIn("## 2026-03-15", content)
+            self.assertIn("## 2026-03-31", content)
+            self.assertIn("day one: launch news", content)
+            self.assertIn("day fifteen: model updates", content)
+            self.assertIn("day thirty-one: security release", content)
 
     def test_compact_previous_month_news_skips_when_not_first_day(self):
         with TemporaryDirectory() as tmp_dir:
