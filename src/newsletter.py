@@ -426,17 +426,23 @@ def compact_previous_month_news(
     ]
     for daily_file in daily_files:
         day = daily_file.stem
-        daily_content = daily_file.read_text(encoding="utf-8").strip()
+        try:
+            daily_content = daily_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to read daily newsletter '{daily_file.name}'"
+            ) from exc
         lines.extend(
             [
                 f"## {day}",
                 "",
-                f"Source: [{daily_file.name}]({daily_file.name})",
+                f"Original daily newsletter: [{daily_file.name}]({daily_file.name})",
                 "",
                 daily_content,
                 "",
             ]
         )
+    lines.append("")
     lines.append("---")
     lines.append(
         f"*Compiled monthly news overview generated on "
