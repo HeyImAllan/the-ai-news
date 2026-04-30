@@ -398,7 +398,7 @@ def normalize_newsletter_body(body: str) -> str:
 def compact_previous_month_news(
     now: datetime | None = None, newsletters_dir: Path = NEWSLETTERS_DIR
 ) -> Path | None:
-    """Create a monthly overview file on the first day of each month."""
+    """Create a monthly file containing all previous-month daily newsletters."""
     current = now or datetime.now(timezone.utc)
     if current.day != 1:
         return None
@@ -416,18 +416,36 @@ def compact_previous_month_news(
     previous_month_name = ENGLISH_MONTH_NAMES[previous_month_last_day.month]
     current_month_name = ENGLISH_MONTH_NAMES[current.month]
     lines = [
-        f"# 📅 {previous_month_name} {previous_month_last_day.year} Overview",
+        f"# 📅 {previous_month_name} {previous_month_last_day.year} News Overview",
         "",
-        f"Daily newsletters in {previous_month_name} {previous_month_last_day.year}:",
+        (
+            f"Compacted daily newsletters for {previous_month_name} "
+            f"{previous_month_last_day.year}."
+        ),
         "",
     ]
     for daily_file in daily_files:
         day = daily_file.stem
-        lines.append(f"- [{day}]({daily_file.name})")
+        try:
+            daily_content = daily_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to read daily newsletter '{daily_file.name}'"
+            ) from exc
+        lines.extend(
+            [
+                f"## {day}",
+                "",
+                f"Original daily newsletter: [{daily_file.name}]({daily_file.name})",
+                "",
+                daily_content,
+                "",
+            ]
+        )
     lines.append("")
     lines.append("---")
     lines.append(
-        f"*Compiled monthly overview generated on "
+        f"*Compiled monthly news overview generated on "
         f"{current_month_name} {current.day}, {current.year} from "
         f"{len(daily_files)} daily newsletters.*"
     )
